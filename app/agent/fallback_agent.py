@@ -1,0 +1,110 @@
+"""Deterministic rule-based fallback agent."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from app.agent.interface import ILLMAgent
+from app.agent.tools import call_tool
+
+
+class FallbackAgent(ILLMAgent):
+    """Maps common assignment questions to structured Step 2 calls."""
+
+    async def analyze(self, question: str) -> dict[str, Any]:
+        original = question.strip()
+        base = {"success": False, "agent_mode": "fallback", "question": original, "tool_calls": [], "results": []}
+        if not original:
+            return {**base, "error": {"code": "INVALID_PARAMETER", "message": "question must not be empty."}}
+        text = original.lower()
+        dates, assumptions = _date_parameters(text)
+        calls: list[tuple[str, dict[str, Any]]] = []
+        if "payment" in text or "credit card" in text or "boleto" in text or "installment" in text:
+            metric = "value_share" if "share" in text or "vs" in text or " versus " in text else "value_by_type"
+            calls.append(("payment_breakdown", {"metric": metric, **dates}))
+        elif "delivery" in text or "on-time" in text or "delay" in text or "shipping" in text:
+            metric = "on_time_rate" if "on-time" in text or "on time" in text else "delay"
+            calls.append(("delivery_performance", {"metric": metric, "state": _state(text), "limit": _limit(text), "sort": _sort(text, descending=metric == "on_time_rate"), **dates}))
+        elif "review" in text or "rating" in text or "rated" in text:
+            if "distribution" in text or "score distribution" in text:
+                metric = "distribution"
+            elif "category" in text or "categories" in text:
+                metric = "category"
+            elif "seller" in text:
+                metric = "seller"
+            else:
+                metric = "average"
+            calls.append(("review_analysis", {"metric": metric, "category": _category(text), "seller_id": None, "limit": _limit(text), "sort": _sort(text), **dates}))
+        elif "seller" in text:
+            calls.append(("seller_performance", {"metric": "review_score" if "rating" in text or "rated" in text else "delivery_speed" if "speed" in text or "faster" in text else "revenue", "state": _state(text), "limit": _limit(text), "sort": _sort(text), **dates}))
+        elif "category" in text or "product" in text:
+            calls.append(("product_performance", {"metric": "freight" if "freight" in text else "review_score" if "review" in text or "rating" in text else "orders" if "order volume" in text or "number of orders" in text else "revenue", "category": _category(text), "limit": _limit(text), "sort": _sort(text), **dates}))
+        elif "order" in text or "revenue" in text or "sales" in text:
+            metric = "orders" if "order" in text and "revenue" not in text else "delivery_delay" if "delay" in text else "revenue"
+            granularity = "day" if "daily" in text or "by day" in text else "year" if "yearly" in text or "annual" in text else "month"
+            calls.append(("order_trends", {"metric": metric, "granularity": granularity, **dates}))
+        else:
+            return {**base, "error": {"code": "UNSUPPORTED_QUESTION", "message": "The fallback agent could not identify an analytics domain."}}
+
+        # Resolve the assignment's genuinely multi-step top-category comparison.
+        if "top" in text and "categor" in text and "review" in text:
+            calls = [("product_performance", {"metric": "orders", "limit": _limit(text, default=5), "sort": "desc", "category": None, **dates})]
+        for tool, arguments in calls:
+            base["tool_calls"].append({"tool": tool, "arguments": arguments})
+            result = await call_tool(tool, arguments)
+            base["results"].append({"tool": tool, "result": result})
+            if tool == "product_performance" and "top" in text and "categor" in text and "review" in text and result.get("success"):
+                for row in result["data"]:
+                    category_call = {"metric": "category", "category": row["category"], "seller_id": None, "limit": 1, "sort": "desc", **dates}
+                    base["tool_calls"].append({"tool": "review_analysis", "arguments": category_call})
+                    base["results"].append({"tool": "review_analysis", "result": await call_tool("review_analysis", category_call)})
+        succeeded = [item for item in base["results"] if item["result"].get("success")]
+        failed = [item for item in base["results"] if not item["result"].get("success")]
+        if not succeeded:
+            base["error"] = {"code": failed[0]["result"].get("error", {}).get("code", "TOOL_FAILURE"), "message": "No analytics tool returned usable results."}
+        else:
+            base["success"] = True
+            base["analysis"] = {"interpretation": original, "assumptions": assumptions, "suggested_analysis": _suggested(text)}
+            base["chart_hint"] = {"type": "bar", "reason": "Fallback agent always uses a bar chart."}
+            if failed:
+                base["analysis"]["partial_failure"] = True
+        return base
+
+
+def _date_parameters(text: str) -> tuple[dict[str, str], list[str]]:
+    year = re.search(r"\b(20\d{2})\b", text)
+    if "first half" in text and year:
+        return {"from_date": f"{year.group(1)}-01-01", "to_date": f"{year.group(1)}-06-30"}, []
+    if "last year" in text:
+        return {"from_date": "2017-01-01", "to_date": "2017-12-31"}, []
+    if year:
+        return {"from_date": f"{year.group(1)}-01-01", "to_date": f"{year.group(1)}-12-31"}, []
+    return {}, ["No date range was specified, so the full available dataset was used."]
+
+
+def _limit(text: str, default: int = 20) -> int:
+    match = re.search(r"\b(?:top|bottom|limit)\s+(\d+)\b", text)
+    return min(int(match.group(1)), 100) if match else default
+
+
+def _sort(text: str, descending: bool = True) -> str:
+    if "worst" in text or "lowest" in text or "slowest" in text or "ascending" in text:
+        return "asc"
+    return "desc" if descending else "asc"
+
+
+def _state(text: str) -> str | None:
+    if "são paulo" in text or "sao paulo" in text or re.search(r"\bsp\b", text):
+        return "SP"
+    match = re.search(r"\b([a-z]{2})\b", text)
+    return match.group(1).upper() if match and match.group(1).upper() in {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"} else None
+
+
+def _category(text: str) -> str | None:
+    known = ("electronics", "computers", "health_beauty", "sports_leisure", "furniture_decor", "watches_gifts")
+    return next((category for category in known if category.replace("_", " ") in text or category in text), None)
+
+
+def _suggested(text: str) -> dict[str, bool]:
+    return {"time_based": any(word in text for word in ("monthly", "daily", "year", "trend")), "ranking": "top" in text or "worst" in text, "category_comparison": "category" in text, "part_to_whole": "share" in text, "distribution": "distribution" in text}

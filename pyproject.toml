@@ -1,0 +1,27 @@
+[project]
+name = "cerebralzip-analytics"
+version = "0.1.0"
+description = "E-Commerce Sales Analytics Chatbot over the Olist dataset (CerebralZip Data Science Internship assignment)."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pandas>=2.2",
+    "mcp>=1.0",
+    "groq>=0.9",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]

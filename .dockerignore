@@ -1,0 +1,23 @@
+# Repository/runtime data is mounted into the backend container.
+data/
+*.zip
+
+# Local environments and generated files.
+.venv/
+.env
+.git/
+.gitignore
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Frontend dependencies are installed by the frontend service.
+frontend/node_modules/
+frontend/dist/
+
+# Local editor and build files.
+.vscode/
+.idea/
+*.db
+*.sqlite
+*.sqlite3
