@@ -145,8 +145,8 @@ def _distribution_chart(data: list[dict[str, Any]]) -> dict[str, Any]:
 
 def _scatter_chart(data: list[dict[str, Any]]) -> dict[str, Any]:
     points = [{"x": row.get("x"), "y": row.get("y")} for row in data if row.get("x") is not None and row.get("y") is not None]
-    config = {"type": "scatter", "data": {"datasets": [{"label": "Entity comparison", "data": points, "backgroundColor": "#2563eb"}]}, "options": {"responsive": True}}
-    return _chart("scatter", "A scatter chart shows two continuous variables for each entity.", config)
+    config = {"type": "scatter", "data": {"datasets": [{"label": "Seller delivery speed vs average review score", "data": points, "backgroundColor": "#2563eb"}]}, "options": {"responsive": True, "scales": {"x": {"title": {"display": True, "text": "Delivery Speed (days)"}}, "y": {"title": {"display": True, "text": "Average Review Score"}}}}}
+    return _chart("scatter", "A scatter chart is used because seller-level delivery speed and average review score are two continuous numeric variables whose relationship can be compared point by point.", config)
 
 
 def _is_distribution(text: str, tool: str, metric: str) -> bool:

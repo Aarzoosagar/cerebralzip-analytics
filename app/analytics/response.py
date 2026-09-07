@@ -46,6 +46,7 @@ def build_analytics_response(question: str, agent_response: dict[str, Any]) -> d
         if scatter_data:
             data = scatter_data
             context["scatter_data"] = scatter_data
+            metadata.update({"entity": "seller", "grain": "one row per seller", "x_metric": "delivery speed", "y_metric": "average review score"})
     chart = select_chart_config(data, question, context)
     if chart is None:
         return {"success": True, "question": question, "chart": None, "insight": None, "message": "No chart available because the returned data shape is not suitable for a supported visualization.", "metadata": metadata}
@@ -145,8 +146,7 @@ def _is_scatter_comparison(question: str) -> bool:
         or "relationship" in text
         or "associated" in text
         or "lead to" in text
-        or "get better" in text
-        or "rated better" in text
+        or ("better" in text and ("review" in text or "rating" in text))
     )
     speed_intent = "faster" in text or "delivery speed" in text or "fast delivery" in text
     return relationship_intent and speed_intent

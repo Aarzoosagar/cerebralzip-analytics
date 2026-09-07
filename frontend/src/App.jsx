@@ -1,23 +1,25 @@
 import React from "react"
 import { useEffect, useRef, useState } from "react"
 import { Chart, registerables } from "chart.js"
+import { chartConfigForRenderer } from "./chartConfig"
 
 Chart.register(...registerables)
 
-const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://localhost:8000"
+const API_URL = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL || "http://127.0.0.1:8000"
 
 function ChartView({ chart }) {
   const canvasRef = useRef(null)
   const chartRef = useRef(null)
+  const chartConfig = chartConfigForRenderer(chart)
 
   useEffect(() => {
-    if (!canvasRef.current || !chart?.config) return undefined
+    if (!canvasRef.current || !chartConfig) return undefined
     chartRef.current?.destroy()
-    chartRef.current = new Chart(canvasRef.current, chart.config)
+    chartRef.current = new Chart(canvasRef.current, chartConfig)
     return () => chartRef.current?.destroy()
-  }, [chart])
+  }, [chartConfig])
 
-  if (!chart?.config) return <p className="muted">No chart available.</p>
+  if (!chartConfig) return <p className="muted">No chart available.</p>
   return <div className="chart-wrap"><canvas ref={canvasRef} /></div>
 }
 

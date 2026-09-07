@@ -51,19 +51,19 @@ def _number(value: Any) -> float:
 def _scatter_insight(data: list[dict[str, Any]]) -> str:
     pairs = [(float(row["x"]), float(row["y"])) for row in data if isinstance(row.get("x"), (int, float)) and isinstance(row.get("y"), (int, float))]
     if len(pairs) < 3:
-        return "The data shows no clear relationship between faster delivery and higher review scores."
+        return "Across sellers, the data shows no clear relationship between faster delivery and higher review scores."
     xs, ys = zip(*pairs)
     x_centered = [value - sum(xs) / len(xs) for value in xs]
     y_centered = [value - sum(ys) / len(ys) for value in ys]
     denominator = (sum(value * value for value in x_centered) * sum(value * value for value in y_centered)) ** 0.5
     if not denominator:
-        return "The data shows no clear relationship between faster delivery and higher review scores."
+        return "Across sellers, the data shows no clear relationship between faster delivery and higher review scores."
     relationship = sum(x * y for x, y in zip(x_centered, y_centered)) / denominator
     if relationship <= -0.5:
-        return "The data shows a clear positive relationship: faster delivery times tend to coincide with higher review scores."
+        return "Across sellers, the data shows a clear positive relationship: faster delivery times tend to coincide with higher review scores."
     if relationship >= 0.5:
-        return "The data shows a clear negative relationship: longer delivery times tend to coincide with higher review scores."
-    return "The data shows no clear relationship between faster delivery and higher review scores."
+        return "Across sellers, the data shows a clear negative relationship: longer delivery times tend to coincide with higher review scores."
+    return "Across sellers, the data shows no clear relationship between faster delivery and higher review scores."
 
 
 def _label(row: dict[str, Any]) -> str:

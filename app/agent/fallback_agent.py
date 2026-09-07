@@ -20,7 +20,7 @@ class FallbackAgent(ILLMAgent):
         text = original.lower()
         dates, assumptions = _date_parameters(text)
         calls: list[tuple[str, dict[str, Any]]] = []
-        if ("delivery" in text or "delay" in text) and ("review" in text or "rating" in text) and "state" not in text and _is_delivery_review_comparison(text):
+        if ("delivery" in text or "delay" in text or "faster" in text or "delivery speed" in text or "fast delivery" in text) and ("review" in text or "rating" in text) and "state" not in text and _is_delivery_review_comparison(text):
             calls.extend([
                 ("seller_performance", {"metric": "delivery_speed", "state": None, "limit": 100, "sort": "asc", **dates}),
                 ("seller_performance", {"metric": "review_score", "state": None, "limit": 100, "sort": "desc", **dates}),
@@ -129,8 +129,7 @@ def _is_delivery_review_comparison(text: str) -> bool:
         or "relationship" in text
         or "associated" in text
         or "lead to" in text
-        or "get better" in text
-        or "rated better" in text
+        or ("better" in text and ("review" in text or "rating" in text))
     )
     speed_intent = "faster" in text or "delivery speed" in text or "fast delivery" in text
     return relationship_intent and speed_intent

@@ -87,7 +87,25 @@ def test_fallback_exact_faster_delivery_review_question_returns_scatter() -> Non
     assert [call["arguments"]["metric"] for call in result["tool_calls"]] == ["delivery_speed", "review_score"]
     response = build_analytics_response(question, result)
     assert response["chart"]["type"] == "scatter"
+    assert response["metadata"]["entity"] == "seller"
+    assert response["metadata"]["x_metric"] == "delivery speed"
+    assert response["metadata"]["y_metric"] == "average review score"
+    assert response["chart"]["config"]["data"]["datasets"][0]["data"][0]["x"] is not None
     assert "relationship" in response["insight"].lower()
+
+
+def test_fallback_faster_sellers_review_question_returns_seller_scatter() -> None:
+    from app.analytics.response import build_analytics_response
+
+    question = "Do faster sellers receive better reviews?"
+    result = asyncio.run(FallbackAgent().analyze(question))
+    assert [call["tool"] for call in result["tool_calls"]] == ["seller_performance", "seller_performance"]
+    assert [call["arguments"]["metric"] for call in result["tool_calls"]] == ["delivery_speed", "review_score"]
+    response = build_analytics_response(question, result)
+    assert response["chart"]["type"] == "scatter"
+    points = response["chart"]["config"]["data"]["datasets"][0]["data"]
+    assert points and all(set(point) == {"x", "y"} for point in points)
+    assert "state" not in response["insight"].lower()
 
 
 def test_fallback_worst_delivery_performance_by_state_is_delivery_only() -> None:
