@@ -139,7 +139,15 @@ def _is_delivery_review_comparison(text: str) -> bool:
 def _is_state_review_comparison(text: str) -> bool:
     if "state" not in text or not ("review" in text or "rating" in text):
         return False
-    return _is_delivery_review_comparison(text) or " + " in text or "how do" in text and "compare" in text
+    delivery_signal = "delivery" in text or "delay" in text
+    cooccurrence = (
+        "side by side" in text
+        or "together" in text
+        or "compare" in text
+        or " + " in text
+        or " and " in f" {text} "
+    )
+    return delivery_signal and cooccurrence
 
 
 def _state(text: str) -> str | None:

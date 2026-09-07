@@ -95,6 +95,15 @@ def test_fallback_worst_delivery_performance_by_state_is_delivery_only() -> None
     assert [call["tool"] for call in result["tool_calls"]] == ["delivery_performance"]
 
 
+@pytest.mark.parametrize("question", [
+    "Show delivery delay and review score side by side by state",
+    "Show delivery delay and review score by state",
+])
+def test_fallback_state_delivery_review_cooccurrence_uses_both_tools(question: str) -> None:
+    result = asyncio.run(FallbackAgent().analyze(question))
+    assert [call["tool"] for call in result["tool_calls"]] == ["delivery_performance", "review_analysis"]
+
+
 def test_fallback_state_delivery_review_query_uses_both_tools() -> None:
     result = asyncio.run(FallbackAgent().analyze("delivery delay + review score by state"))
     assert [call["tool"] for call in result["tool_calls"]] == ["delivery_performance", "review_analysis"]
