@@ -20,7 +20,7 @@ class FallbackAgent(ILLMAgent):
         text = original.lower()
         dates, assumptions = _date_parameters(text)
         calls: list[tuple[str, dict[str, Any]]] = []
-        if ("delivery" in text or "delay" in text) and ("review" in text or "rating" in text) and _is_delivery_review_comparison(text):
+        if ("delivery" in text or "delay" in text) and ("review" in text or "rating" in text) and "state" not in text and _is_delivery_review_comparison(text):
             calls.extend([
                 ("seller_performance", {"metric": "delivery_speed", "state": None, "limit": 100, "sort": "asc", **dates}),
                 ("seller_performance", {"metric": "review_score", "state": None, "limit": 100, "sort": "desc", **dates}),
@@ -72,7 +72,7 @@ class FallbackAgent(ILLMAgent):
                     category_call = {"metric": "category", "category": row["category"], "seller_id": None, "limit": 1, "sort": "desc", **dates}
                     base["tool_calls"].append({"tool": "review_analysis", "arguments": category_call})
                     base["results"].append({"tool": "review_analysis", "result": await call_tool("review_analysis", category_call)})
-            if tool == "delivery_performance" and "state" in text and result.get("success"):
+            if tool == "delivery_performance" and _is_state_review_comparison(text) and result.get("success"):
                 state_call = {"metric": "average", "state": None, "group_by_state": True, "category": None, "seller_id": None, "limit": 100, "sort": "desc", **dates}
                 base["tool_calls"].append({"tool": "review_analysis", "arguments": state_call})
                 base["results"].append({"tool": "review_analysis", "result": await call_tool("review_analysis", state_call)})
@@ -122,7 +122,24 @@ def _sort(text: str, descending: bool = True) -> str:
 
 
 def _is_delivery_review_comparison(text: str) -> bool:
-    return " vs " in f" {text} " or "versus" in text or "relate to" in text or "relationship" in text
+    relationship_intent = (
+        " vs " in f" {text} "
+        or "versus" in text
+        or "relate to" in text
+        or "relationship" in text
+        or "associated" in text
+        or "lead to" in text
+        or "get better" in text
+        or "rated better" in text
+    )
+    speed_intent = "faster" in text or "delivery speed" in text or "fast delivery" in text
+    return relationship_intent and speed_intent
+
+
+def _is_state_review_comparison(text: str) -> bool:
+    if "state" not in text or not ("review" in text or "rating" in text):
+        return False
+    return _is_delivery_review_comparison(text) or " + " in text or "how do" in text and "compare" in text
 
 
 def _state(text: str) -> str | None:

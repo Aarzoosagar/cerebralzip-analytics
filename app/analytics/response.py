@@ -138,7 +138,18 @@ def _scatter_data(successful: list[tuple[str, dict[str, Any]]]) -> list[dict[str
 
 def _is_scatter_comparison(question: str) -> bool:
     text = question.lower()
-    return " vs " in f" {text} " or "versus" in text or "relate to" in text or "relationship" in text
+    relationship_intent = (
+        " vs " in f" {text} "
+        or "versus" in text
+        or "relate to" in text
+        or "relationship" in text
+        or "associated" in text
+        or "lead to" in text
+        or "get better" in text
+        or "rated better" in text
+    )
+    speed_intent = "faster" in text or "delivery speed" in text or "fast delivery" in text
+    return relationship_intent and speed_intent
 
 
 def _row_label(row: dict[str, Any]) -> str:

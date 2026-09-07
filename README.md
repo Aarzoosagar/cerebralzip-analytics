@@ -136,6 +136,29 @@ The tools provide time-based order and payment metrics, translated product categ
 - `Show payment share`
 - `Show the top sellers in Sao Paulo by revenue`
 
+### Demo Walkthrough
+
+- `Show monthly revenue trend in 2017` demonstrates a time-series line chart.
+- `Show revenue by category` demonstrates translated category comparison.
+- `Which states have the worst delivery performance?` demonstrates ranked delivery-delay states.
+- `Show credit card vs boleto share` demonstrates a payment-share doughnut chart.
+- `Show the top 10 sellers by revenue in São Paulo` demonstrates filtered seller ranking.
+
+Additional multi-tool examples:
+
+- `Which are the top 5 categories by order volume and review scores?`
+- `Show monthly orders and average review score together for 2017`
+- `Do sellers with faster delivery get better reviews?`
+- `Show delivery delay and review score by state`
+
+### Design Decisions
+
+Chart selection uses line charts for one metric over time, dual-axis lines for two time metrics, horizontal bars for rankings, vertical bars for category comparisons, doughnuts for part-to-whole shares, scatter charts for two continuous variables, and stacked horizontal bars for review scores 1 through 5. Ambiguous results may expose two chart options.
+
+Dashboard refresh replays the original structured tool calls, preserves the prior snapshot when refresh fails or returns no data, and flags significant changes using documented metric-specific thresholds such as 10% aggregate change, 5 percentage points for payment shares, 0.3 review points, and 1 delivery day.
+
+The LLM agent uses Groq native tool calling when configured. Recoverable LLM failures use the deterministic fallback agent; explicit fallback mode avoids the LLM entirely. The fallback always advertises a bar-chart hint for deterministic behavior, while the analytics response applies the appropriate supported chart rule.
+
 ## Frontend
 
 The React/Vite frontend sends questions to `/api/query`, renders the returned Chart.js configuration and insight, and supports dashboard listing, pinning, refresh, and removal. Its API base defaults to `http://localhost:8000` and can be changed with `VITE_API_BASE_URL`.

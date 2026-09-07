@@ -78,6 +78,28 @@ def test_fallback_worst_delivery_delays_sort_descending() -> None:
     assert values == sorted(values, reverse=True)
 
 
+def test_fallback_exact_faster_delivery_review_question_returns_scatter() -> None:
+    from app.analytics.response import build_analytics_response
+
+    question = "Do sellers with faster delivery get better reviews?"
+    result = asyncio.run(FallbackAgent().analyze(question))
+    assert [call["tool"] for call in result["tool_calls"]] == ["seller_performance", "seller_performance"]
+    assert [call["arguments"]["metric"] for call in result["tool_calls"]] == ["delivery_speed", "review_score"]
+    response = build_analytics_response(question, result)
+    assert response["chart"]["type"] == "scatter"
+    assert "relationship" in response["insight"].lower()
+
+
+def test_fallback_worst_delivery_performance_by_state_is_delivery_only() -> None:
+    result = asyncio.run(FallbackAgent().analyze("Which states have the worst delivery performance?"))
+    assert [call["tool"] for call in result["tool_calls"]] == ["delivery_performance"]
+
+
+def test_fallback_state_delivery_review_query_uses_both_tools() -> None:
+    result = asyncio.run(FallbackAgent().analyze("delivery delay + review score by state"))
+    assert [call["tool"] for call in result["tool_calls"]] == ["delivery_performance", "review_analysis"]
+
+
 @pytest.mark.parametrize("question", ["faster delivery vs better reviews", "How does faster delivery relate to better reviews?"])
 def test_fallback_delivery_review_comparison_returns_seller_scatter(question: str) -> None:
     from app.analytics.response import build_analytics_response
