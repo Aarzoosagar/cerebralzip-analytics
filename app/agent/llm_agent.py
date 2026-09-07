@@ -7,9 +7,10 @@ import inspect
 import json
 from typing import Any
 
-from groq import Groq
+from groq import Groq, GroqError
 
 from app.agent.config import groq_api_key, llm_model, llm_timeout_seconds
+from app.agent.fallback_agent import FallbackAgent
 from app.agent.interface import ILLMAgent
 from app.agent.prompts import SYSTEM_PROMPT
 from app.agent.tools import TOOL_DEFINITIONS, call_tool
@@ -31,9 +32,9 @@ class LLMAgent(ILLMAgent):
         if not question.strip():
             return {**base, "error": {"code": "INVALID_PARAMETER", "message": "question must not be empty."}}
         if not self.api_key or self.client is None:
-            return {**base, "error": {"code": "MISSING_GROQ_API_KEY", "message": "GROQ_API_KEY is required when AGENT_MODE=llm."}}
+            return await self._fallback_response(base, "MISSING_GROQ_API_KEY")
         if not self.model:
-            return {**base, "error": {"code": "INVALID_MODEL_CONFIGURATION", "message": "LLM_MODEL must be configured when AGENT_MODE=llm."}}
+            return await self._fallback_response(base, "INVALID_MODEL_CONFIGURATION")
         messages: list[dict[str, Any]] = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": question}]
         assumptions = _assumptions(question)
         final_text = ""
@@ -41,9 +42,9 @@ class LLMAgent(ILLMAgent):
             try:
                 response = await self._completion(messages)
             except asyncio.TimeoutError:
-                return self._error_response(base, "LLM_TIMEOUT", "The language model request timed out.", assumptions)
-            except Exception:
-                return self._error_response(base, "LLM_API_FAILURE", "The language model request failed.", assumptions)
+                return await self._fallback_response(base, "LLM_TIMEOUT")
+            except (GroqError, ConnectionError, TimeoutError):
+                return await self._fallback_response(base, "LLM_API_FAILURE")
             message = response.choices[0].message
             tool_calls = getattr(message, "tool_calls", None) or []
             final_text = getattr(message, "content", None) or final_text
@@ -77,7 +78,7 @@ class LLMAgent(ILLMAgent):
             messages.extend(tool_messages)
             if malformed_call:
                 return self._error_response(base, "MALFORMED_TOOL_CALL", "The language model returned malformed tool arguments.", assumptions)
-        return self._error_response(base, "TOOL_CALL_LIMIT", "The language model exceeded the maximum tool-call rounds.", assumptions)
+        return await self._fallback_response(base, "TOOL_CALL_LIMIT")
 
     async def _completion(self, messages: list[dict[str, Any]]) -> Any:
         request = await asyncio.wait_for(asyncio.to_thread(self.client.chat.completions.create, messages=messages, model=self.model, tools=TOOL_DEFINITIONS, tool_choice="auto"), timeout=self.timeout_seconds)
@@ -88,6 +89,13 @@ class LLMAgent(ILLMAgent):
         base["error"] = {"code": code, "message": message}
         base["analysis"] = {"interpretation": "", "assumptions": assumptions, "suggested_analysis": {}}
         return base
+
+    @staticmethod
+    async def _fallback_response(base: dict[str, Any], reason: str) -> dict[str, Any]:
+        fallback = await FallbackAgent().analyze(base["question"])
+        fallback["fallback_used"] = True
+        fallback["fallback_reason"] = reason
+        return fallback
 
 
 def _attribute(value: Any, name: str, default: Any = None) -> Any:

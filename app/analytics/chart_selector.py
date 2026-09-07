@@ -39,6 +39,10 @@ def select_chart(
         return _doughnut_chart(data, metric)
     if _is_dual_time(text, context):
         return _dual_time_chart(context)
+    if _is_dual_category(text, context):
+        return _dual_category_chart(context)
+    if _is_dual_state(text, context):
+        return _dual_state_chart(context)
     if _is_ranked(text, context):
         return _ranked_bar_chart(data, context)
     if context.get("ambiguous"):
@@ -92,6 +96,26 @@ def _dual_time_chart(metadata: dict[str, Any]) -> dict[str, Any]:
     return _chart("line", "Two metrics share the same time axis, so separate y-axes preserve their scales.", config)
 
 
+def _dual_category_chart(metadata: dict[str, Any]) -> dict[str, Any]:
+    series = metadata.get("category_series", [])
+    datasets = [_dataset(item["label"], item["values"], "y" if index == 0 else "y1", "#2563eb" if index == 0 else "#dc2626") for index, item in enumerate(series[:2])]
+    config = {"type": "bar", "data": {"labels": metadata.get("category_labels", []), "datasets": datasets}, "options": {"responsive": True, "scales": {"y": {"type": "linear", "position": "left", "title": {"display": True, "text": "Order Volume"}}, "y1": {"type": "linear", "position": "right", "grid": {"drawOnChartArea": False}, "title": {"display": True, "text": "Average Review Score"}}}}}
+    return _chart("bar", "Separate y-axes keep order volume and average review score readable across the same categories.", config)
+
+
+def _dual_state_chart(metadata: dict[str, Any]) -> dict[str, Any]:
+    series = metadata.get("state_series", [])
+    datasets = [_dataset(item["label"], item["values"], "y" if index == 0 else "y1", "#2563eb" if index == 0 else "#dc2626") for index, item in enumerate(series[:2])]
+    config = {"type": "bar", "data": {"labels": metadata.get("state_labels", []), "datasets": datasets}, "options": {"indexAxis": "y", "responsive": True, "scales": {"y": {"type": "category", "position": "left"}, "x": {"type": "linear", "position": "bottom", "title": {"display": True, "text": "Delivery Delay (days)"}}, "x1": {"type": "linear", "position": "top", "grid": {"drawOnChartArea": False}, "title": {"display": True, "text": "Average Review Score"}}}}}
+    for dataset in datasets[1:]:
+        dataset["xAxisID"] = "x1"
+        dataset.pop("yAxisID", None)
+    if datasets:
+        datasets[0]["xAxisID"] = "x"
+        datasets[0].pop("yAxisID", None)
+    return _chart("bar", "Separate x-axes keep delivery delay and average review score readable across the same states.", config)
+
+
 def _ranked_bar_chart(data: list[dict[str, Any]], metadata: dict[str, Any]) -> dict[str, Any]:
     descending = metadata.get("sort", "desc") != "asc"
     ordered = sorted(data, key=lambda row: (_value(row) is None, _value(row) or 0), reverse=descending)
@@ -130,7 +154,7 @@ def _is_distribution(text: str, tool: str, metric: str) -> bool:
 
 
 def _is_scatter(text: str, context: dict[str, Any]) -> bool:
-    return " vs " in f" {text} " and bool(context.get("scatter_data"))
+    return bool(context.get("scatter_data"))
 
 
 def _is_part_to_whole(text: str, tool: str, metric: str) -> bool:
@@ -139,6 +163,14 @@ def _is_part_to_whole(text: str, tool: str, metric: str) -> bool:
 
 def _is_dual_time(text: str, context: dict[str, Any]) -> bool:
     return bool(context.get("series")) and len(context["series"]) >= 2 and _is_time([], text, "")
+
+
+def _is_dual_category(text: str, context: dict[str, Any]) -> bool:
+    return "categor" in text and len(context.get("category_series", [])) >= 2
+
+
+def _is_dual_state(text: str, context: dict[str, Any]) -> bool:
+    return "state" in text and len(context.get("state_series", [])) >= 2
 
 
 def _is_ranked(text: str, context: dict[str, Any]) -> bool:

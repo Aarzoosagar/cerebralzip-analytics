@@ -7,17 +7,28 @@ and /query endpoint are wired in once their underlying features exist.
 from __future__ import annotations
 
 import os
+import asyncio
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dashboard import router as dashboard_router
 from app.api.routes import router as api_router
+from app.database.bootstrap import ensure_database
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Prepare the data before Uvicorn accepts requests."""
+    await asyncio.to_thread(ensure_database)
+    yield
 
 app = FastAPI(
     title="CerebralZip E-Commerce Sales Analytics Chatbot",
     description="AI-assisted analytics over the Olist Brazilian e-commerce dataset.",
     version="0.1.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

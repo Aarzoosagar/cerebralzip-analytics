@@ -35,9 +35,13 @@ def build_analytics_response(question: str, agent_response: dict[str, Any]) -> d
     context: dict[str, Any] = {**metadata, "ranking": _is_ranking(question, agent_response), "sort": _sort_from_calls(agent_response, tool)}
     data = result["data"]
 
-    if len(successful) >= 2 and _is_dual_time_query(question, successful):
+    if len(successful) >= 2 and _is_state_comparison_query(question, successful):
+        context.update(_state_comparison_context(successful))
+    elif len(successful) >= 2 and _is_category_comparison_query(question, successful):
+        context.update(_category_comparison_context(successful))
+    elif len(successful) >= 2 and _is_dual_time_query(question, successful):
         context.update(_time_series_context(successful))
-    elif len(successful) >= 2 and " vs " in f" {question.lower()} ":
+    elif len(successful) >= 2 and _is_scatter_comparison(question):
         scatter_data = _scatter_data(successful)
         if scatter_data:
             data = scatter_data
@@ -53,6 +57,42 @@ def build_analytics_response(question: str, agent_response: dict[str, Any]) -> d
         response["metadata"]["partial_failures"] = [name for name, _ in failed]
         response["message"] = "Some requested sources failed; the chart uses the successful results."
     return response
+
+
+def _is_category_comparison_query(question: str, successful: list[tuple[str, dict[str, Any]]]) -> bool:
+    text = question.lower()
+    return "top" in text and "categor" in text and any(tool == "product_performance" for tool, _ in successful) and any(tool == "review_analysis" for tool, _ in successful)
+
+
+def _is_state_comparison_query(question: str, successful: list[tuple[str, dict[str, Any]]]) -> bool:
+    text = question.lower()
+    return "state" in text and any(tool == "delivery_performance" for tool, _ in successful) and any(tool == "review_analysis" for tool, _ in successful)
+
+
+def _category_comparison_context(successful: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    order_result = next(result for tool, result in successful if tool == "product_performance")
+    category_rows = order_result["data"][:5]
+    review_scores = {}
+    for tool, result in successful:
+        if tool == "review_analysis":
+            for row in result.get("data", []):
+                if row.get("category") is not None:
+                    review_scores[str(row["category"])] = row.get("value")
+    labels = [str(row["category"]) for row in category_rows]
+    return {"category_series": [{"label": "Order Volume", "values": [row.get("value") for row in category_rows]}, {"label": "Average Review Score", "values": [review_scores.get(label) for label in labels]}], "category_labels": labels}
+
+
+def _state_comparison_context(successful: list[tuple[str, dict[str, Any]]]) -> dict[str, Any]:
+    delay_result = next(result for tool, result in successful if tool == "delivery_performance")
+    state_rows = delay_result["data"][:5]
+    review_scores = {}
+    for tool, result in successful:
+        if tool == "review_analysis":
+            for row in result.get("data", []):
+                if row.get("state") is not None:
+                    review_scores[str(row["state"])] = row.get("value")
+    labels = [str(row["state"]) for row in state_rows]
+    return {"state_series": [{"label": "Delivery Delay", "values": [row.get("value") for row in state_rows]}, {"label": "Average Review Score", "values": [review_scores.get(label) for label in labels]}], "state_labels": labels}
 
 
 def _unsupported(question: str, message: str) -> dict[str, Any]:
@@ -94,6 +134,11 @@ def _scatter_data(successful: list[tuple[str, dict[str, Any]]]) -> list[dict[str
     first = {_row_label(row): row.get("value") for row in successful[0][1].get("data", [])}
     second = {_row_label(row): row.get("value") for row in successful[1][1].get("data", [])}
     return [{"entity": label, "x": first[label], "y": second[label]} for label in first.keys() & second.keys() if first[label] is not None and second[label] is not None]
+
+
+def _is_scatter_comparison(question: str) -> bool:
+    text = question.lower()
+    return " vs " in f" {text} " or "versus" in text or "relate to" in text or "relationship" in text
 
 
 def _row_label(row: dict[str, Any]) -> str:

@@ -14,7 +14,7 @@ def groq_api_key() -> str | None:
 
 
 def llm_model() -> str | None:
-    return os.environ.get("LLM_MODEL") or None
+    return os.environ.get("LLM_MODEL") or "llama-3.1-8b-instant"
 
 
 def llm_timeout_seconds() -> float:

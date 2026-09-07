@@ -25,19 +25,27 @@ def _product_performance(metric: str, category: str | None, from_date: str | Non
     if category:
         category_sql = " AND COALESCE(t.product_category_name_english, p.product_category_name) = ?"
         params.append(category)
+    order = "ASC" if sort == "asc" else "DESC"
+    if metric == "review_score":
+        data = rows(f"""SELECT categories.category, ROUND(AVG(r.review_score), 2) AS value
+            FROM (SELECT DISTINCT i.order_id, COALESCE(t.product_category_name_english, '[untranslated] ' || p.product_category_name) AS category
+                FROM order_items i JOIN products p ON p.product_id = i.product_id
+                LEFT JOIN product_category_name_translation t ON t.product_category_name = p.product_category_name) categories
+            JOIN orders o ON o.order_id = categories.order_id
+            LEFT JOIN order_reviews r ON r.order_id = categories.order_id
+            WHERE {date_sql}{" AND categories.category = ?" if category else ""}
+            GROUP BY categories.category ORDER BY value {order} LIMIT ?""", [*params, limit])
+        return success(data, metric, {"category": category, "from_date": from_date, "to_date": to_date, "limit": limit, "sort": sort}, "one row per translated category")
     expressions = {
         "revenue": "ROUND(SUM(i.price), 2)", "orders": "COUNT(DISTINCT i.order_id)",
-        "review_score": "ROUND(AVG(r.review_score), 2)", "freight": "ROUND(SUM(i.freight_value), 2)",
+        "freight": "ROUND(SUM(i.freight_value), 2)",
     }
     value = expressions[metric]
-    order = "ASC" if sort == "asc" else "DESC"
-    review_join = "LEFT JOIN order_reviews r ON r.order_id = i.order_id" if metric == "review_score" else ""
     data = rows(f"""SELECT COALESCE(t.product_category_name_english, '[untranslated] ' || p.product_category_name) AS category,
         {value} AS value
         FROM order_items i JOIN orders o ON o.order_id = i.order_id
         JOIN products p ON p.product_id = i.product_id
         LEFT JOIN product_category_name_translation t ON t.product_category_name = p.product_category_name
-        {review_join}
         WHERE {date_sql}{category_sql}
         GROUP BY category ORDER BY value {order} LIMIT ?""", [*params, limit])
     return success(data, metric, {"category": category, "from_date": from_date, "to_date": to_date, "limit": limit, "sort": sort}, "one row per translated category")

@@ -20,9 +20,22 @@ class FallbackAgent(ILLMAgent):
         text = original.lower()
         dates, assumptions = _date_parameters(text)
         calls: list[tuple[str, dict[str, Any]]] = []
-        if "payment" in text or "credit card" in text or "boleto" in text or "installment" in text:
+        if ("delivery" in text or "delay" in text) and ("review" in text or "rating" in text) and _is_delivery_review_comparison(text):
+            calls.extend([
+                ("seller_performance", {"metric": "delivery_speed", "state": None, "limit": 100, "sort": "asc", **dates}),
+                ("seller_performance", {"metric": "review_score", "state": None, "limit": 100, "sort": "desc", **dates}),
+            ])
+        elif ("delay" in text or "delivery" in text) and ("review" in text or "rating" in text) and "state" in text:
+            calls.append(("delivery_performance", {"metric": "delay", "state": None, "limit": _limit(text, default=5), "sort": "desc", **dates}))
+        elif "order" in text and ("review" in text or "rating" in text) and any(word in text for word in ("monthly", "by month", "month")):
+            calls.extend([
+                ("order_trends", {"metric": "orders", "granularity": "month", **dates}),
+                ("review_analysis", {"metric": "average", "granularity": "month", "category": None, "seller_id": None, "limit": 100, "sort": "asc", **dates}),
+            ])
+        elif "payment" in text or "credit card" in text or "boleto" in text or "installment" in text:
             metric = "value_share" if "share" in text or "vs" in text or " versus " in text else "value_by_type"
-            calls.append(("payment_breakdown", {"metric": metric, **dates}))
+            payment_types = ["credit_card", "boleto"] if "credit card" in text and "boleto" in text else None
+            calls.append(("payment_breakdown", {"metric": metric, "payment_types": payment_types, **dates}))
         elif "delivery" in text or "on-time" in text or "delay" in text or "shipping" in text:
             metric = "on_time_rate" if "on-time" in text or "on time" in text else "delay"
             calls.append(("delivery_performance", {"metric": metric, "state": _state(text), "limit": _limit(text), "sort": _sort(text, descending=metric == "on_time_rate"), **dates}))
@@ -59,6 +72,10 @@ class FallbackAgent(ILLMAgent):
                     category_call = {"metric": "category", "category": row["category"], "seller_id": None, "limit": 1, "sort": "desc", **dates}
                     base["tool_calls"].append({"tool": "review_analysis", "arguments": category_call})
                     base["results"].append({"tool": "review_analysis", "result": await call_tool("review_analysis", category_call)})
+            if tool == "delivery_performance" and "state" in text and result.get("success"):
+                state_call = {"metric": "average", "state": None, "group_by_state": True, "category": None, "seller_id": None, "limit": 100, "sort": "desc", **dates}
+                base["tool_calls"].append({"tool": "review_analysis", "arguments": state_call})
+                base["results"].append({"tool": "review_analysis", "result": await call_tool("review_analysis", state_call)})
         succeeded = [item for item in base["results"] if item["result"].get("success")]
         failed = [item for item in base["results"] if not item["result"].get("success")]
         if not succeeded:
@@ -89,9 +106,23 @@ def _limit(text: str, default: int = 20) -> int:
 
 
 def _sort(text: str, descending: bool = True) -> str:
-    if "worst" in text or "lowest" in text or "slowest" in text or "ascending" in text:
+    if "rated" in text or "review score" in text or "rating" in text:
+        if "worst" in text or "lowest" in text or "ascending" in text:
+            return "asc"
+        if "best" in text or "highest" in text:
+            return "desc"
+    if "delivery" in text or "delay" in text:
+        if "worst" in text or "longest" in text:
+            return "desc"
+        if "shortest" in text or "fastest" in text:
+            return "asc"
+    if "ascending" in text or "lowest" in text:
         return "asc"
     return "desc" if descending else "asc"
+
+
+def _is_delivery_review_comparison(text: str) -> bool:
+    return " vs " in f" {text} " or "versus" in text or "relate to" in text or "relationship" in text
 
 
 def _state(text: str) -> str | None:

@@ -40,6 +40,50 @@ def test_dual_axis_time_series() -> None:
     assert {dataset["yAxisID"] for dataset in datasets} == {"y", "y1"}
 
 
+def test_top_categories_response_has_five_shared_dual_axis_bar_series() -> None:
+    question = "Which are the top 5 product categories by order volume, and how do their review scores compare?"
+    agent_result = asyncio.run(FallbackAgent().analyze(question))
+    response = build_analytics_response(question, agent_result)
+    assert response["chart"]["type"] == "bar"
+    config = response["chart"]["config"]
+    assert len(config["data"]["labels"]) == 5
+    assert len(config["data"]["datasets"]) == 2
+    assert [dataset["label"] for dataset in config["data"]["datasets"]] == ["Order Volume", "Average Review Score"]
+    assert [dataset["yAxisID"] for dataset in config["data"]["datasets"]] == ["y", "y1"]
+    assert all(len(dataset["data"]) == 5 for dataset in config["data"]["datasets"])
+    assert response["insight"].endswith(".")
+    assert response["insight"].count(" and ") == 1
+
+
+def test_state_delay_response_has_five_shared_dual_axis_bar_series() -> None:
+    question = "Which states have the longest delivery delays and how do their review scores compare?"
+    agent_result = asyncio.run(FallbackAgent().analyze(question))
+    response = build_analytics_response(question, agent_result)
+    assert response["chart"]["type"] == "bar"
+    config = response["chart"]["config"]
+    assert len(config["data"]["labels"]) == 5
+    assert len(config["data"]["datasets"]) == 2
+    assert [dataset["label"] for dataset in config["data"]["datasets"]] == ["Delivery Delay", "Average Review Score"]
+    assert [dataset["xAxisID"] for dataset in config["data"]["datasets"]] == ["x", "x1"]
+    assert all(len(dataset["data"]) == 5 for dataset in config["data"]["datasets"])
+    assert response["insight"].startswith("The state with the longest average delivery delay was ")
+    assert response["insight"].endswith(".")
+
+
+def test_target_query_returns_two_shared_2017_monthly_series() -> None:
+    question = "Show monthly orders and average review score together for 2017"
+    agent_result = asyncio.run(FallbackAgent().analyze(question))
+    response = build_analytics_response(question, agent_result)
+    assert response["chart"]["type"] == "line"
+    config = response["chart"]["config"]
+    assert config["type"] == "line"
+    assert config["data"]["labels"] == [f"2017-{month:02d}" for month in range(1, 13)]
+    assert len(config["data"]["datasets"]) == 2
+    assert {dataset["yAxisID"] for dataset in config["data"]["datasets"]} == {"y", "y1"}
+    assert all(len(dataset["data"]) == 12 for dataset in config["data"]["datasets"])
+    assert {dataset["label"] for dataset in config["data"]["datasets"]} == {"Orders", "Review Score"}
+
+
 def test_ranked_horizontal_bar_is_sorted_descending() -> None:
     chart = select_chart_config([{"seller_id": "low", "value": 2}, {"seller_id": "high", "value": 9}], "top 10 sellers by revenue", {"tool": "seller_performance", "metric": "revenue", "ranking": True, "sort": "desc"})
     assert chart["type"] == "bar"
@@ -63,6 +107,22 @@ def test_two_continuous_variables_are_scatter() -> None:
     chart = select_chart_config([{"entity": "SP", "x": 3.1, "y": 4.2}], "delivery delay vs review score by seller", {"scatter_data": True})
     assert chart["type"] == "scatter"
     assert chart["config"]["data"]["datasets"][0]["data"] == [{"x": 3.1, "y": 4.2}]
+
+
+def test_scatter_comparison_uses_a_relationship_oriented_insight() -> None:
+    question = "faster delivery vs better reviews"
+    response = build_analytics_response(question, asyncio.run(FallbackAgent().analyze(question)))
+    assert response["chart"]["type"] == "scatter"
+    assert "relationship" in response["insight"].lower()
+    assert "on-time rate" not in response["insight"].lower()
+
+
+def test_worst_delivery_states_use_delivery_delay_wording() -> None:
+    question = "states with worst delivery delays"
+    response = build_analytics_response(question, asyncio.run(FallbackAgent().analyze(question)))
+    assert "longest delivery delay" in response["insight"].lower()
+    assert "leading entity" not in response["insight"].lower()
+    assert response["insight"].endswith("days.")
 
 
 def test_review_distribution_preserves_zero_buckets() -> None:

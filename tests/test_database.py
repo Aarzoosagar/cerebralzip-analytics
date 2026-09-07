@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import csv
+import sqlite3
 from pathlib import Path
 
 import pytest
 
 from app.database.connection import get_connection
 from app.database.loader import load_olist_dataset
+from app.database.models import REQUIRED_TABLES, SCHEMA_SQL
+from app.database import bootstrap
 
 
 def _write_csv(root: Path, filename: str, headers: list[str], rows: list[list[object]]) -> None:
@@ -49,3 +52,39 @@ def test_schema_loader_relationships_and_translation(fixture_data: Path, monkeyp
         assert connection.execute("SELECT COUNT(*) FROM order_items JOIN sellers USING (seller_id)").fetchone()[0] == 1
         category = connection.execute("SELECT product_id, product_category_name, product_category_name_english FROM products JOIN product_category_name_translation USING (product_category_name)").fetchone()
         assert tuple(category) == ("p1", "cat", "category")
+
+
+def test_ensure_database_loads_missing_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_path = tmp_path / "missing.db"
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    data_dir = tmp_path / "data"
+    calls: list[str] = []
+    monkeypatch.setattr(bootstrap, "_download_dataset", lambda root: calls.append(str(root)))
+    monkeypatch.setattr(bootstrap, "load_olist_dataset", lambda root: {"orders": 1})
+    result = bootstrap.ensure_database(data_dir)
+    assert result == {"orders": 1}
+    assert calls == [str(data_dir)]
+
+
+def test_ensure_database_loads_empty_schema(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_path = tmp_path / "empty.db"
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(SCHEMA_SQL)
+    monkeypatch.setattr(bootstrap, "load_olist_dataset", lambda root: {"orders": 1})
+    monkeypatch.setattr(bootstrap, "_download_dataset", lambda root: None)
+    assert bootstrap.ensure_database(tmp_path / "data") == {"orders": 1}
+
+
+def test_ensure_database_skips_initialized_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    database_path = tmp_path / "ready.db"
+    monkeypatch.setenv("DATABASE_PATH", str(database_path))
+    with sqlite3.connect(database_path) as connection:
+        connection.executescript(SCHEMA_SQL)
+        connection.execute("INSERT INTO customers VALUES ('c1', 'u1', 1, 'city', 'ST')")
+        connection.execute("INSERT INTO orders VALUES ('o1', 'c1', 'delivered', '2017-01-01', NULL, NULL, NULL, '2017-01-02')")
+    with sqlite3.connect(database_path) as connection:
+        tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert set(REQUIRED_TABLES).issubset(tables)
+    monkeypatch.setattr(bootstrap, "load_olist_dataset", lambda root: pytest.fail("initialized database was reloaded"))
+    assert bootstrap.ensure_database(tmp_path / "unused") is None
