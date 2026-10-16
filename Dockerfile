@@ -1,13 +1,17 @@
-FROM python:3.11-slim
+﻿FROM python:3.11-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
-# pyproject.toml uses setuptools, which needs the package source present
-# to resolve `app*`, so copy code before installing.
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 COPY app ./app
+
 RUN pip install --no-cache-dir .
+
+COPY scripts ./scripts
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
