@@ -81,7 +81,7 @@ do not set it manually. The process binds to that value automatically.
 |---|---|---|
 | `DATABASE_PATH` | `/var/data/olist.db` | Required for persistence; this exact name is read by the SQLite connection code. |
 | `DATA_DIR` | `/var/data` | Required to persist the downloaded dataset and CSVs on the same disk. |
-| `FRONTEND_ORIGIN` | `https://<your-vercel-domain>` | Set to the exact browser origin, with no path or trailing slash. |
+| `FRONTEND_ORIGIN` | `https://cerebralzip-analytics.vercel.app` | Set to the exact browser origin, with no path or trailing slash. |
 | `AGENT_MODE` | `llm` | Selects the Groq-backed agent. `fallback` selects deterministic analytics without Groq. |
 | `GROQ_API_KEY` | `<your-groq-api-key>` | Secret; add only to Render, never to Vercel or source control. |
 | `LLM_MODEL` | `llama-3.1-8b-instant` | Existing application default. |
@@ -122,14 +122,14 @@ backend base URL, never a secret.
 
 ## 5. Connect Vercel and configure CORS
 
-1. Deploy the frontend once to obtain its Vercel domain, such as
-   `https://<project>.vercel.app`, or configure the production custom domain.
-2. Set Render's `FRONTEND_ORIGIN` to that exact origin (scheme and hostname only).
-   The backend's CORS configuration permits this configured origin and retains its
-   local development origins.
+1. The backend allows `https://cerebralzip-analytics.vercel.app` and also reads
+   `FRONTEND_ORIGIN` from its Render environment. Set that variable to the exact
+   production origin (scheme and hostname only), especially when using a custom
+   domain.
+2. The backend retains its local development origins.
 3. If using a custom domain, configure `FRONTEND_ORIGIN` to the domain users visit.
-   The backend currently accepts one configured production origin; preview domains
-   on Vercel may differ, so do not expect every preview URL to be allowed.
+   The configured value adds one allowed origin; Vercel preview domains may differ,
+   so do not expect every preview URL to be allowed.
 4. Redeploy/restart the Render service after changing its environment. Vercel
    environment changes require a new frontend deployment because Vite embeds them at
    build time.
